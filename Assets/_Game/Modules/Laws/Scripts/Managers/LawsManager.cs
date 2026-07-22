@@ -1,9 +1,11 @@
 using System;
+using System.Linq;
 using VContainer.Unity;
 using Game.Modules.Laws.Models;
 using Game.Shared.Services.Time;
 using Game.Shared.Services.LawStats;
 using Game.Shared.Services.Crystal;
+using Game.Shared.Services.SaveSystem;
 using UnityEngine;
 
 namespace Game.Modules.Laws.Managers
@@ -13,7 +15,7 @@ namespace Game.Modules.Laws.Managers
     /// Orchestrates interactions between the Pure Models (Deck, Hand, Timer)
     /// and Global Services (Time, Crystal, LawStats).
     /// </summary>
-    public class LawsManager : IInitializable, IDisposable
+    public class LawsManager : IInitializable, IDisposable, ISavable
     {
         private readonly LawDeckModel _deckModel;
         private readonly LawHandModel _handModel;
@@ -22,6 +24,7 @@ namespace Game.Modules.Laws.Managers
         private readonly ITimeService _timeService;
         private readonly ILawStatsService _statsService;
         private readonly ICrystalService _crystalService;
+        private readonly ISaveCoordinator _saveCoordinator;
         private readonly LawsConfigSO _config;
 
         public LawsManager(
@@ -31,6 +34,7 @@ namespace Game.Modules.Laws.Managers
             ITimeService timeService,
             ILawStatsService statsService,
             ICrystalService crystalService,
+            ISaveCoordinator saveCoordinator,
             LawsConfigSO config)
         {
             _deckModel = deckModel;
@@ -40,6 +44,7 @@ namespace Game.Modules.Laws.Managers
             _timeService = timeService;
             _statsService = statsService;
             _crystalService = crystalService;
+            _saveCoordinator = saveCoordinator;
             _config = config;
         }
 
@@ -51,17 +56,64 @@ namespace Game.Modules.Laws.Managers
             // Subscribe to local timer completion to add a card
             _timerModel.OnTimerComplete += HandleTimerComplete;
 
-            // Initialize models (this would normally load from Save Data)
+            // Set default initialized state
             _deckModel.RefillAndShuffle(_config.TotalCardCount);
             _handModel.LoadState(0, -1);
             _timerModel.LoadState(_config.RefillTimeSeconds);
+
+            // Register with Save System. If a save exists, LoadFromState will be called immediately.
+            _saveCoordinator.RegisterSavable(this);
+
+            // For testing/initialization: immediately give the player 1 card if they have none.
+            if (_handModel.AvailableCardCount == 0)
+            {
+                AddCardToHand();
+            }
         }
 
         public void Dispose()
         {
+            _saveCoordinator.UnregisterSavable(this);
             _timeService.OnOneSecondTick -= HandleGlobalTick;
             _timerModel.OnTimerComplete -= HandleTimerComplete;
         }
+
+        // --- ISavable Implementation ---
+
+        public string SaveKey => "LawsModule";
+
+        [Serializable]
+        private struct LawsSaveData
+        {
+            public int AvailableCards;
+            public int ActiveCardIndex;
+            public float CurrentTimer;
+            public int[] DeckIndices;
+        }
+
+        public string GetSaveState()
+        {
+            var data = new LawsSaveData
+            {
+                AvailableCards = _handModel.AvailableCardCount,
+                ActiveCardIndex = _handModel.CurrentActiveCardIndex,
+                CurrentTimer = _timerModel.CurrentTimer,
+                DeckIndices = _deckModel.UnusedCardIndices.ToArray()
+            };
+            return JsonUtility.ToJson(data);
+        }
+
+        public void LoadFromState(string jsonState)
+        {
+            if (string.IsNullOrEmpty(jsonState)) return;
+            
+            var data = JsonUtility.FromJson<LawsSaveData>(jsonState);
+            _handModel.LoadState(data.AvailableCards, data.ActiveCardIndex);
+            _timerModel.LoadState(data.CurrentTimer);
+            _deckModel.LoadState(data.DeckIndices);
+        }
+
+        // --- Core Logic ---
 
         private void HandleGlobalTick()
         {
