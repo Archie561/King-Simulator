@@ -816,8 +816,8 @@ PlayerSettings:
   editorAssembliesCompatibilityLevel: 1
   m_RenderingPath: 1
   m_MobileRenderingPath: 1
-  metroPackageName: King Simulator
-  metroPackageVersion: 
+  metroPackageName: KingSimulator
+  metroPackageVersion: 1.0.0.0
   metroCertificatePath: 
   metroCertificatePassword: 
   metroCertificateSubject: 
@@ -825,7 +825,7 @@ PlayerSettings:
   metroCertificateNotAfter: 0000000000000000
   metroApplicationDescription: King Simulator
   wsaImages: {}
-  metroTileShortName: 
+  metroTileShortName: King Simulator
   metroTileShowName: 0
   metroMediumTileShowName: 0
   metroLargeTileShowName: 0
